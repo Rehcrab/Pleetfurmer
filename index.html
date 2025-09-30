@@ -1,0 +1,1107 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+<style>
+    #gameCanvas{
+        border-color: black;
+        border-width: 10px;
+        border-style: solid;
+        border-radius: 10px;
+    }
+    #levelCounter {
+        position: absolute;
+        left: 50px;
+        top: 20px;
+    }
+    #info {
+        position: absolute;
+        width: 400px;
+        height: 200px;
+        background-color: black;
+        color: white;
+        top: 200px;
+        left: 400px;
+        display: none;
+        font-size: 50px;
+        text-align: center;
+    }
+    #respawnButton{
+        width: 300px;
+        height: 100px;
+        font-size: 50px;
+    }
+    #percentageContainer {
+        margin-top: 10px;
+    }
+    .percentage-bar {
+        width: 300px;
+        height: 20px;
+        background-color: #333;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 5px 0;
+    }
+    .percentage-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #4CAF50, #8BC34A);
+        transition: width 0.3s ease;
+    }
+    .percentage-text {
+        font-size: 16px;
+        margin-top: 5px;
+    }
+</style>
+    </head>
+    <body>
+        <p id="levelCounter">Level: 1</p>
+<canvas id="gameCanvas" width="1200" height="500"></canvas>
+<div id="info"></div>
+<p id="coinCounter">Coins: 0</p>
+<div id="percentageContainer">
+    <div class="percentage-bar">
+        <div id="levelPercentageFill" class="percentage-fill" style="width: 0%"></div>
+    </div>
+    <div id="levelPercentageText" class="percentage-text">Level: 0%</div>
+    
+    <div class="percentage-bar">
+        <div id="totalPercentageFill" class="percentage-fill" style="width: 0%"></div>
+    </div>
+    <div id="totalPercentageText" class="percentage-text">Total: 0%</div>
+</div>
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const info=document.getElementById("info");
+var gamePlaying=true;
+var cameraX = 0;
+var cameraY = 0;
+const coinCounter = document.getElementById("coinCounter");
+var currentLevelMaxY = 0; // Add this with other global variables
+
+const themes = [
+    { // Level 1 - Forest Theme
+        background: "#87CEEB",
+        platforms: "#228B22",
+        transparentPlatforms: "rgba(34, 139, 34, 0.4)",
+        coins: "#FFD700",
+        spikes: "#8B0000",
+        player: "#1E90FF",
+        goal: "#FFA500"
+    },
+    { // Level 2 - Desert Theme
+        background: "#FFD700",
+        platforms: "#D2691E",
+        transparentPlatforms: "rgba(210, 105, 30, 0.4)",
+        coins: "#FF69B4",
+        spikes: "#8B4513",
+        player: "#1E90FF",
+        goal: "#00CED1"
+    },
+    { // Level 3 - Ice Cave Theme
+        background: "#4682B4",
+        platforms: "#708090",
+        transparentPlatforms: "rgba(112, 128, 144, 0.4)",
+        coins: "#E6E6FA",
+        spikes: "#2F4F4F",
+        player: "#1E90FF",
+        goal: "#FF6347"
+    },
+    { // Level 4 - Ocean Theme
+        background: "#006994",
+        platforms: "#20B2AA",
+        transparentPlatforms: "rgba(32, 178, 170, 0.4)",
+        coins: "#FFD700",
+        spikes: "#8B0000",
+        player: "#1E90FF",
+        goal: "#FF6B6B"
+    },
+    { // Level 5 - City Theme
+        background: "#87CEEB",
+        platforms: "#696969",
+        transparentPlatforms: "rgba(105, 105, 105, 0.4)",
+        coins: "#FFD700",
+        spikes: "#8B0000",
+        player: "#1E90FF",
+        goal: "#32CD32"
+    },
+    { // Level 6 - Lab Theme
+        background: "#0F0F23",
+        platforms: "#00FF00",
+        transparentPlatforms: "rgba(0, 255, 0, 0.4)",
+        coins: "#FFD700",
+        spikes: "#FF0000",
+        player: "#1E90FF",
+        goal: "#FF00FF"
+    }
+];
+
+function getCurrentTheme() {
+    return themes[currentLevel] || themes[0];
+}
+
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 15;
+        this.height = 15;
+        this.velocityY = 0;
+        this.isJumping = false;
+        this.onObstacle=false;
+        this.velocityX = 0;
+        this.speed = 4;
+        this.friction = 0.3;
+        this.isMovingLeft = false;
+        this.isMovingRight = false;
+        this.onGround = false;
+    }
+    draw() {
+        ctx.fillStyle = getCurrentTheme().player;
+        ctx.fillRect(this.x - cameraX, this.y - cameraY, this.width, this.height);
+    }
+    update() {
+        var i=0;
+    this.onGround = false;
+    // Apply gravity
+    this.velocityY += 0.6;
+        this.y += this.velocityY;
+
+    // Vertical collision detection
+    for (i=0;i<platforms[currentLevel].length;i++){
+        if (checkCollision(this, platforms[currentLevel][i])){
+            // Transparent platform logic - can't jump up through them
+            if (platforms[currentLevel][i].isTransparent && this.velocityY < 0) {
+                continue; // Skip collision if jumping up through a transparent platform
+            }
+
+            if (this.velocityY > 0) { // Falling
+                this.y = platforms[currentLevel][i].y - this.height;
+                this.velocityY = 0;
+                this.isJumping = false;
+                this.onGround = true;
+            } else if (this.velocityY < 0) { // Jumping up
+                // Only block upward movement if it's a solid platform
+                if (!platforms[currentLevel][i].isTransparent) {
+                    this.y = platforms[currentLevel][i].y + platforms[currentLevel][i].height;
+                    this.velocityY = 0;
+                }
+            }
+        }
+    }
+
+    // Apply horizontal movement
+    if (this.isMovingLeft) {
+        this.velocityX = -this.speed;
+    } else if (this.isMovingRight) {
+        this.velocityX = this.speed;
+    } else {
+        if (this.onGround) { // Apply friction only when on ground
+            this.velocityX *= this.friction;
+        }
+    }
+
+    this.x += this.velocityX;
+
+    // Horizontal collision detection
+    for (i=0;i<platforms[currentLevel].length;i++){
+        if (checkCollision(this, platforms[currentLevel][i])){
+            if (this.velocityX > 0 && this.x < platforms[currentLevel][i].x) { // Moving right and colliding from left
+                this.x = platforms[currentLevel][i].x - this.width;
+                this.velocityX = 0;
+            } else if (this.velocityX < 0 && this.x + this.width > platforms[currentLevel][i].x + platforms[currentLevel][i].width) { // Moving left and colliding from right
+                this.x = platforms[currentLevel][i].x + platforms[currentLevel][i].width;
+                this.velocityX = 0;
+            }
+        }
+    }
+
+    // Re-evaluate onGround after all movements and collisions
+    this.onGround = false; // Reset before re-evaluation
+    for (i = 0; i < platforms[currentLevel].length; i++) {
+        const platform = platforms[currentLevel][i];
+        // Check if player's bottom is on top of ANY platform (including transparent) with a small tolerance
+        if (this.x < platform.x + platform.width &&
+            this.x + this.width > platform.x &&
+            this.y + this.height >= platform.y - 5 && // Small tolerance
+            this.y + this.height <= platform.y + 5) { // Small tolerance
+            this.onGround = true;
+            break; // Found ground, no need to check other platforms
+        }
+    }
+
+    // SPIKE COLLISION - ONLY DIE IF GAME IS PLAYING
+    if (gamePlaying) {
+        for (i=0;i<spikes[currentLevel].length;i++){
+            if (checkCollision(this, spikes[currentLevel][i])){
+                gamePlaying=false;
+                info.style.display="block";
+                info.innerHTML="You Died!<button onclick='respawn()' id='respawnButton'>Respawn</button>";
+                break; // Stop checking after first spike collision
+            }
+        }
+    }
+}
+check(){
+    // Player dies if they fall below the bottom of the level
+    if (this.y > 600) {
+        gamePlaying=false;
+        info.style.display="block";
+        info.innerHTML="You Died!<button onclick='respawn()' id='respawnButton'>Respawn</button>";
+    }
+}
+    win() {
+    if (checkCollision(this, goals[currentLevel])){
+        const levelCoins = coins[currentLevel].length;
+        const collectedPercentage = ((currentLevelCoins / levelCoins) * 100).toFixed(1);
+        totalCoinsCollected += currentLevelCoins;
+        if (goals.length == currentLevel + 1){
+            gamePlaying = false;
+            info.style.display = "block";
+            const totalPossibleCoins = coins.reduce((sum, levelCoins) => sum + levelCoins.length, 0);
+            const totalPercentage = ((totalCoinsCollected / totalPossibleCoins) * 100).toFixed(1);
+            info.innerHTML = `You Beat The Game!<br>Total Coins: ${totalCoinsCollected}/${totalPossibleCoins} (${totalPercentage}%)`;
+            return;
+        }
+        
+        
+        currentLevel += 1;
+        currentLevelCoins = 0;
+        
+        // Properly reset player for new level
+        player.x = spawnPoints[currentLevel][0];
+        player.y = spawnPoints[currentLevel][1];
+        player.velocityY = 0;
+        player.velocityX = 0;
+        player.isJumping = false;
+        player.onGround = false;
+        player.isMovingLeft = false;
+        player.isMovingRight = false;
+        
+        // Reset camera
+        cameraX = 0;
+        cameraY = 0;
+        
+        document.getElementById("levelCounter").innerText = "Level: " + (currentLevel + 1);
+        updateCoinDisplay();
+    }
+}
+    jump() {
+    if (this.onGround) {
+        this.velocityY = -15;
+        this.isJumping = true;
+        // Apply horizontal velocity on jump if moving
+        if (this.isMovingLeft) {
+            this.velocityX = -this.speed;
+        } else if (this.isMovingRight) {
+            this.velocityX = this.speed;
+        } else {
+            this.velocityX = 0;
+        }
+    }
+}
+}
+class Platform {
+    constructor(x, y, width, height, isTransparent = false) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.isTransparent = isTransparent;
+    }
+
+    draw() {
+        const theme = getCurrentTheme();
+        ctx.fillStyle = this.isTransparent ? theme.transparentPlatforms : theme.platforms;
+        ctx.fillRect(this.x - cameraX, this.y - cameraY, this.width, this.height);
+    }
+}
+class Goal {
+    constructor(x,y,width,height){
+        this.x=x;
+        this.y=y;
+        this.width=width;
+        this.height=height;
+    }
+    draw(){
+        ctx.fillStyle = getCurrentTheme().goal;
+        ctx.beginPath();
+        ctx.strokeStyle = getCurrentTheme().goal;
+        ctx.arc(this.x - cameraX, this.y - cameraY, this.width,0,2*Math.PI);
+        ctx.stroke();
+        ctx.fill();
+    }
+}
+class Spike {
+    constructor(x,y,width,height,direction){
+        this.x=x;
+        this.width=width;
+        this.height=height;
+        this.direction=direction;
+        if (this.direction === "up") {
+            this.y = y - height;
+        } else {
+            this.y = y;
+        }
+    }
+    draw(){
+        ctx.strokeStyle="black";
+        ctx.fillStyle = getCurrentTheme().spikes;
+        ctx.beginPath();
+        if (this.direction=="up"){
+        ctx.moveTo(this.x - cameraX,this.y + this.height - cameraY);
+        ctx.lineTo(this.x+this.width/2 - cameraX,this.y - cameraY);
+        ctx.lineTo(this.x+this.width - cameraX,this.y + this.height - cameraY);
+        ctx.lineTo(this.x - cameraX,this.y + this.height - cameraY);
+        } else if (this.direction=="left"){
+            ctx.moveTo(this.x - cameraX + this.width,this.y - cameraY);
+            ctx.lineTo(this.x - cameraX,this.y+this.height/2 - cameraY);
+            ctx.lineTo(this.x - cameraX + this.width,this.y+this.height - cameraY);
+            ctx.lineTo(this.x - cameraX + this.width,this.y - cameraY);
+        } else if (this.direction=="down"){
+            ctx.moveTo(this.x - cameraX,this.y - cameraY);
+            ctx.lineTo(this.x+this.width/2 - cameraX,this.y+this.height - cameraY);
+            ctx.lineTo(this.x+this.width - cameraX,this.y - cameraY);
+            ctx.lineTo(this.x - cameraX,this.y - cameraY);
+        } else if (this.direction=="right"){
+            ctx.moveTo(this.x - cameraX,this.y - cameraY);
+            ctx.lineTo(this.x+this.width - cameraX,this.y+this.height/2 - cameraY);
+            ctx.lineTo(this.x - cameraX,this.y+this.height - cameraY);
+            ctx.lineTo(this.x - cameraX,this.y - cameraY);
+        }
+        ctx.fill()
+    }
+}
+class Coin {
+    constructor(x, y, radius) {
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.width = radius * 2; // For collision detection
+        this.height = radius * 2; // For collision detection
+        this.collected = false;
+    }
+
+    draw() {
+        if (!this.collected) {
+            ctx.fillStyle = getCurrentTheme().coins;
+            ctx.beginPath();
+            ctx.arc(this.x - cameraX + this.radius, this.y - cameraY + this.radius, this.radius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = "darkgoldenrod";
+            ctx.stroke();
+        }
+    }
+
+    collect() {
+        if (!this.collected) {
+            currentLevelCoins++;
+            updateCoinDisplay();
+            this.collected = true;
+            return true; // Indicate that a coin was collected
+        }
+        return false;
+    }
+}
+function checkCollision(rectA, rectB) {
+  if (rectA.x + rectA.width > rectB.x &&
+  rectA.x < rectB.x + rectB.width &&
+  rectA.y + rectA.height > rectB.y &&
+  rectA.y < rectB.y + rectB.height) {
+    return true;
+  } else {
+    return false;
+  }
+}
+function updateCoinDisplay() {
+    const levelCoins = coins[currentLevel].length;
+    const levelPercentage = levelCoins > 0 ? ((currentLevelCoins / levelCoins) * 100) : 0;
+    
+    // Calculate total percentage
+    const totalPossibleCoins = coins.reduce((sum, levelCoins) => sum + levelCoins.length, 0);
+    const totalCollected = totalCoinsCollected + currentLevelCoins;
+    const totalPercentage = totalPossibleCoins > 0 ? ((totalCollected / totalPossibleCoins) * 100) : 0;
+    
+    // Update level percentage
+    document.getElementById('levelPercentageFill').style.width = levelPercentage + '%';
+    document.getElementById('levelPercentageText').innerText = `Level: ${levelPercentage.toFixed(1)}% (${currentLevelCoins}/${levelCoins})`;
+    
+    // Update total percentage
+    document.getElementById('totalPercentageFill').style.width = totalPercentage + '%';
+    document.getElementById('totalPercentageText').innerText = `Total: ${totalPercentage.toFixed(1)}% (${totalCollected}/${totalPossibleCoins})`;
+    
+    coinCounter.innerText = `Coins: ${totalCoinsCollected} (+ ${currentLevelCoins})`;
+}
+function respawn() {
+    // Clear any stuck key states first
+    player.isMovingLeft = false;
+    player.isMovingRight = false;
+    
+    info.style.display = 'none';
+    gamePlaying = true;
+    
+    // Completely reset player state
+    player.x = spawnPoints[currentLevel][0];
+    player.y = spawnPoints[currentLevel][1];
+    player.velocityY = 0;
+    player.velocityX = 0;
+    player.isJumping = false;
+    player.onGround = false;
+    
+    // Reset coins for current level
+    coins[currentLevel].forEach(coin => {
+        coin.collected = false;
+    });
+    
+    currentLevelCoins = 0;
+    updateCoinDisplay();
+    
+    // Force camera reset
+    cameraX = 0;
+    cameraY = 0;
+}
+function gameLoop() {
+    if (gamePlaying){
+        if (Math.abs(player.velocityX) > 10) {
+            player.velocityX = player.velocityX > 0 ? 4 : -4;
+        }
+        if (Math.abs(player.velocityY) > 20) {
+            player.velocityY = player.velocityY > 0 ? 10 : -10;
+        }
+    
+    // Set background color
+    ctx.fillStyle = getCurrentTheme().background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const halfCanvasWidth = canvas.width / 2;
+    const halfCanvasHeight = canvas.height / 2;
+
+    player.update();
+    player.check();
+    player.win();
+    player.draw();
+    platforms[currentLevel].forEach(platform => platform.draw());
+    goals[currentLevel].draw();
+    spikes[currentLevel].forEach(spike => spike.draw());
+    coins[currentLevel].forEach(coin => {
+        coin.draw();
+        if (!coin.collected && checkCollision(player, coin)) {
+            coin.collect();
+        }
+    });
+
+        // Reset bounds calculation each frame
+        let currentLevelMaxX = 0;
+    let currentLevelMinY = canvas.height;
+    currentLevelMaxY = 0; // RESET each frame
+
+    // Calculate from platforms
+    platforms[currentLevel].forEach(platform => {
+        if (platform.x + platform.width > currentLevelMaxX) {
+            currentLevelMaxX = platform.x + platform.width;
+        }
+        if (platform.y < currentLevelMinY) {
+            currentLevelMinY = platform.y;
+        }
+        if (platform.y + platform.height > currentLevelMaxY) {
+            currentLevelMaxY = platform.y + platform.height;
+        }
+    });
+
+    // Also include goals, spikes, coins in maxY calculation
+    if (goals[currentLevel].y + goals[currentLevel].height > currentLevelMaxY) {
+        currentLevelMaxY = goals[currentLevel].y + goals[currentLevel].height;
+    }
+    spikes[currentLevel].forEach(spike => {
+        if (spike.y + spike.height > currentLevelMaxY) {
+            currentLevelMaxY = spike.y + spike.height;
+        }
+    });
+    coins[currentLevel].forEach(coin => {
+        if (coin.y + coin.height > currentLevelMaxY) {
+            currentLevelMaxY = coin.y + coin.height;
+        }
+    });
+
+    // Ensure minimum level height
+    const minLevelHeight = 1000;
+    currentLevelMaxY = Math.max(currentLevelMaxY, minLevelHeight);
+
+    let calculatedLevelWidth = currentLevelMaxX;
+    const minLevelWidth = 5000;
+    const currentLevelWidth = Math.max(calculatedLevelWidth, minLevelWidth);
+    const currentLevelHeight = currentLevelMaxY - currentLevelMinY;
+
+    // X-axis scrolling
+        // X-axis scrolling
+        if (player.x < halfCanvasWidth) {
+        cameraX = 0;
+    } else if (player.x > currentLevelWidth - halfCanvasWidth) {
+        cameraX = currentLevelWidth - canvas.width;
+    } else {
+        cameraX = player.x - halfCanvasWidth;
+    }
+
+            // Y-axis scrolling - WITH DEBUG
+    
+    // Y-axis scrolling
+// Y-axis scrolling
+// Y-axis scrolling - SAME LOGIC AS X-AXIS
+if (player.y > halfCanvasHeight) {
+    cameraY = 0;
+}else {
+    cameraY = player.y - halfCanvasHeight;
+}
+
+    }
+    requestAnimationFrame(gameLoop);
+}
+const spawnPoints = [[50, 400], [50, 400], [50, 400], [50, 400], [50, 400], [50, 400]];
+
+var currentLevel = 0;
+var totalCoinsCollected = 0;
+var currentLevelCoins = 0;
+var player = new Player(spawnPoints[currentLevel][0], spawnPoints[currentLevel][1]);
+
+// Level 1 - Forest Theme
+const platforms = [[
+    // Main ground
+    new Platform(0, 450, 6000, 50),
+    
+    // Platform sequence 1
+    new Platform(300, 380, 120, 20),
+    new Platform(500, 320, 120, 20),
+    new Platform(700, 260, 120, 20),
+    new Platform(900, 320, 120, 20),
+    new Platform(1100, 380, 120, 20),
+    
+    // Platform sequence 2 - transparent platforms
+    new Platform(1500, 350, 150, 20, true),
+    new Platform(1750, 300, 150, 20),
+    new Platform(2000, 250, 150, 20, true),
+    new Platform(2250, 300, 150, 20),
+    new Platform(2500, 350, 150, 20, true),
+    
+    // Platform sequence 3
+    new Platform(3200, 400, 200, 20),
+    new Platform(3500, 350, 200, 20),
+    new Platform(3800, 300, 200, 20),
+    new Platform(4100, 250, 200, 20),
+    new Platform(4400, 300, 200, 20),
+    new Platform(4700, 350, 200, 20),
+    
+    // Final path to goal
+    new Platform(5000, 400, 400, 20)
+]];
+
+// Level 2 - Desert Theme
+const level2Platforms = [
+    new Platform(0, 450, 500, 50),
+    new Platform(600, 450, 400, 50),
+    new Platform(1100, 420, 150, 30),
+    new Platform(1300, 380, 200, 20),
+    new Platform(1550, 340, 180, 20),
+    new Platform(1800, 300, 220, 20),
+    new Platform(2100, 260, 160, 20, true),
+    new Platform(2350, 220, 180, 20),
+    new Platform(2600, 180, 200, 20, true),
+    new Platform(2850, 140, 160, 20),
+    new Platform(3100, 100, 220, 20),
+    new Platform(3400, 140, 180, 20, true),
+    new Platform(3650, 180, 200, 20),
+    new Platform(3900, 220, 160, 20),
+    new Platform(4150, 260, 180, 20, true),
+    new Platform(4400, 300, 200, 20),
+    new Platform(4650, 340, 160, 20),
+    new Platform(4900, 380, 180, 20),
+    new Platform(5150, 420, 150, 30),
+    new Platform(5350, 450, 600, 50)
+];
+
+// Level 3 - Ice Cave Theme
+const level3Platforms = [
+    // Starting area
+    new Platform(0, 450, 400, 50),
+    
+    // Ice cave entrance
+    new Platform(500, 450, 300, 50),
+    new Platform(900, 420, 200, 30),
+    new Platform(1200, 390, 150, 20),
+    
+    // Ice pillars section
+    new Platform(1450, 350, 80, 100),
+    new Platform(1600, 300, 80, 150),
+    new Platform(1750, 250, 80, 200),
+    new Platform(1900, 300, 80, 150),
+    new Platform(2050, 350, 80, 100),
+    
+    // Ice bridges
+    new Platform(2200, 320, 200, 20, true),
+    new Platform(2500, 280, 180, 20),
+    new Platform(2750, 240, 160, 20, true),
+    new Platform(3000, 200, 140, 20),
+    
+    // Frozen waterfall climb
+    new Platform(3250, 180, 100, 20),
+    new Platform(3400, 150, 100, 20),
+    new Platform(3550, 120, 100, 20),
+    new Platform(3700, 90, 100, 20),
+    new Platform(3850, 60, 100, 20),
+    
+    // Ice slide down
+    new Platform(4000, 90, 100, 20),
+    new Platform(4150, 120, 100, 20),
+    new Platform(4300, 150, 100, 20),
+    new Platform(4450, 180, 100, 20),
+    
+    // Final ice cavern
+    new Platform(4600, 220, 300, 20),
+    new Platform(5000, 280, 250, 20),
+    new Platform(5350, 340, 200, 20),
+    new Platform(5650, 400, 150, 20),
+    new Platform(5900, 450, 800, 50)
+];
+const level4Platforms = [
+    // Ocean floor start
+    new Platform(0, 450, 400, 50),
+    
+    // Coral reef section
+    new Platform(500, 420, 100, 30),
+    new Platform(650, 380, 120, 20),
+    new Platform(800, 340, 100, 20),
+    new Platform(950, 300, 150, 20),
+    
+    // Seaweed forest (transparent)
+    new Platform(1200, 350, 200, 20, true),
+    new Platform(1450, 320, 180, 20, true),
+    new Platform(1700, 290, 160, 20, true),
+    
+    // Shipwreck area
+    new Platform(2000, 400, 300, 50),
+    new Platform(2100, 350, 80, 50),
+    new Platform(2200, 300, 60, 50),
+    
+    // Bubble columns
+    new Platform(2500, 350, 100, 20),
+    new Platform(2700, 300, 100, 20),
+    new Platform(2900, 250, 100, 20),
+    new Platform(3100, 200, 100, 20),
+    
+    // Underwater cave
+    new Platform(3300, 350, 200, 20),
+    new Platform(3550, 320, 150, 20),
+    new Platform(3800, 290, 120, 20),
+    new Platform(4050, 320, 150, 20),
+    new Platform(4300, 350, 200, 20),
+    
+    // Final ascent to goal
+    new Platform(4600, 400, 400, 20),
+    new Platform(5000, 350, 100, 20),
+    new Platform(5200, 300, 100, 20),
+    new Platform(5400, 250, 100, 20),
+    new Platform(5600, 200, 100, 20),
+    new Platform(5800, 150, 200, 20)
+];
+
+// Level 5 - City Platforms
+const level5Platforms = [
+    // Street level
+    new Platform(0, 450, 500, 50),
+    
+    // Building ledges
+    new Platform(600, 400, 100, 20),
+    new Platform(800, 350, 120, 20),
+    new Platform(1000, 300, 100, 20),
+    new Platform(1200, 250, 150, 20),
+    
+    // Rooftops
+    new Platform(1450, 200, 200, 20),
+    new Platform(1700, 180, 180, 20),
+    new Platform(1950, 160, 160, 20),
+    new Platform(2200, 140, 140, 20),
+    
+    // Construction site
+    new Platform(2450, 300, 100, 20),
+    new Platform(2600, 250, 120, 20),
+    new Platform(2750, 200, 100, 20),
+    new Platform(2900, 150, 150, 20),
+    
+    // Billboard walkways
+    new Platform(3150, 350, 200, 20, true),
+    new Platform(3400, 320, 180, 20),
+    new Platform(3650, 290, 160, 20, true),
+    
+    // Bridge section
+    new Platform(3900, 400, 300, 20),
+    new Platform(4250, 350, 100, 20),
+    new Platform(4450, 300, 100, 20),
+    
+    // Skyscraper finale
+    new Platform(4700, 400, 200, 20),
+    new Platform(4950, 350, 150, 20),
+    new Platform(5200, 300, 120, 20),
+    new Platform(5450, 250, 100, 20),
+    new Platform(5700, 200, 80, 20),
+    new Platform(5950, 150, 60, 20)
+];
+
+// Level 6 - Lab Platforms
+const level6Platforms = [
+    // Lab entrance
+    new Platform(0, 450, 400, 50),
+    
+    // Laser grid platforms (transparent)
+    new Platform(500, 400, 150, 20, true),
+    new Platform(700, 350, 120, 20, true),
+    new Platform(900, 300, 100, 20, true),
+    
+    // Conveyor belts
+    new Platform(1150, 400, 200, 20),
+    new Platform(1400, 350, 180, 20),
+    new Platform(1650, 300, 160, 20),
+    
+    // Test chamber platforms
+    new Platform(1900, 250, 120, 20),
+    new Platform(2100, 220, 100, 20),
+    new Platform(2300, 190, 150, 20),
+    new Platform(2500, 160, 130, 20),
+    
+    // Floating data disks
+    new Platform(2750, 350, 100, 20, true),
+    new Platform(2950, 300, 100, 20, true),
+    new Platform(3150, 250, 100, 20, true),
+    new Platform(3350, 200, 100, 20, true),
+    
+    // Circuit board path
+    new Platform(3600, 400, 300, 20),
+    new Platform(3850, 350, 80, 20),
+    new Platform(4000, 300, 80, 20),
+    new Platform(4150, 250, 80, 20),
+    new Platform(4300, 200, 80, 20),
+    
+    // Final reactor core
+    new Platform(4550, 400, 200, 20),
+    new Platform(4800, 350, 150, 20),
+    new Platform(5050, 300, 120, 20),
+    new Platform(5300, 250, 100, 20),
+    new Platform(5550, 200, 80, 20),
+    new Platform(5800, 150, 200, 20)
+];
+
+platforms.push(level2Platforms);
+platforms.push(level3Platforms);
+platforms.push(level4Platforms);
+platforms.push(level5Platforms);
+platforms.push(level6Platforms);
+const goals = [
+    new Goal(5400, 380, 15, 15), // Level 1 goal
+    new Goal(5850, 400, 15, 15), // Level 2 goal  
+    new Goal(6300, 400, 15, 15)  // Level 3 goal
+];
+goals.push(new Goal(6000, 100, 15, 15)); // Level 4 - Ocean
+goals.push(new Goal(6100, 100, 15, 15)); // Level 5 - City  
+goals.push(new Goal(6200, 100, 15, 15)); // Level 6 - Lab
+// Level 1 coins - Forest
+// Level 1 coins - Forest (FIXED - away from spikes)
+const coins = [[
+    new Coin(150, 400, 8), new Coin(250, 400, 8), new Coin(350, 400, 8),
+    // Moved away from spike on first platform
+    new Coin(320, 340, 8), new Coin(380, 340, 8),
+    // Moved away from spike on third platform
+    new Coin(670, 220, 8), new Coin(730, 220, 8),
+    new Coin(750, 220, 8), new Coin(850, 220, 8),
+    // Moved away from spike on fifth platform
+    new Coin(1120, 340, 8), new Coin(1180, 340, 8),
+    new Coin(1550, 310, 8), new Coin(1650, 310, 8),
+    // Moved away from spikes on solid platforms
+    new Coin(1720, 260, 8), new Coin(1880, 260, 8),
+    new Coin(2050, 210, 8), new Coin(2150, 210, 8),
+    // Moved away from spike
+    new Coin(2220, 260, 8), new Coin(2380, 260, 8),
+    new Coin(2550, 310, 8), new Coin(2650, 310, 8),
+    // Moved away from spikes on wide platforms
+    new Coin(3180, 360, 8), new Coin(3320, 360, 8),
+    new Coin(3550, 310, 8), new Coin(3650, 310, 8),
+    // Moved away from spikes
+    new Coin(3780, 260, 8), new Coin(3920, 260, 8),
+    new Coin(4150, 210, 8), new Coin(4250, 210, 8),
+    // Moved away from spike
+    new Coin(4380, 260, 8), new Coin(4520, 260, 8),
+    new Coin(4750, 310, 8), new Coin(4850, 310, 8),
+    new Coin(5050, 360, 8), new Coin(5150, 360, 8), new Coin(5250, 360, 8)
+]];
+// Level 2 coins - Desert (FIXED - higher placement)
+// Level 2 coins - Desert (FIXED - much higher placement)
+// Level 2 coins - Desert (FIXED - much higher placement)
+coins.push([
+    // Ground coins
+    new Coin(100, 400, 8), new Coin(200, 400, 8), new Coin(300, 400, 8),
+    new Coin(400, 400, 8), new Coin(500, 400, 8),
+    new Coin(650, 400, 8), new Coin(750, 400, 8), new Coin(850, 400, 8),
+    new Coin(950, 400, 8),
+    
+    // Platform edges - MUCH HIGHER y-values (smaller numbers = higher)
+    new Coin(1180, 320, 8),  // Platform at y=420, coin at y=320 (100px above)
+    new Coin(1380, 280, 8), new Coin(1420, 280, 8),  // Platform at y=380
+    new Coin(1630, 240, 8), new Coin(1670, 240, 8),  // Platform at y=340
+    new Coin(1850, 200, 8), new Coin(1950, 200, 8),  // Platform at y=300
+    new Coin(2430, 120, 8), new Coin(2470, 120, 8),  // Platform at y=220
+    new Coin(2930, 40, 8), new Coin(2970, 40, 8),    // Platform at y=140
+    new Coin(3180, 20, 8),   // Platform at y=100
+    new Coin(3420, 120, 8), new Coin(3480, 120, 8),  // Platform at y=220
+    new Coin(3680, 160, 8), new Coin(3720, 160, 8),  // Platform at y=260
+    new Coin(3900, 200, 8), new Coin(4000, 200, 8),  // Platform at y=300
+    new Coin(4100, 200, 8),  // Platform at y=300
+    new Coin(4430, 280, 8), new Coin(4470, 280, 8),  // Platform at y=380
+    new Coin(4700, 320, 8), new Coin(4750, 320, 8),  // Platform at y=420
+    new Coin(4900, 360, 8), new Coin(5000, 360, 8),  // Platform at y=460
+    new Coin(5180, 320, 8), new Coin(5220, 320, 8),  // Platform at y=420
+    new Coin(5400, 320, 8), new Coin(5500, 320, 8)   // Platform at y=420
+]);
+// Level 3 coins - Ice Cave
+coins.push([
+    new Coin(100, 400, 8), new Coin(200, 400, 8), new Coin(300, 400, 8),
+    new Coin(550, 400, 8), new Coin(650, 400, 8), new Coin(750, 400, 8),
+    new Coin(950, 380, 8), new Coin(1050, 380, 8),
+    new Coin(1250, 350, 8), new Coin(1350, 350, 8),
+    new Coin(1480, 310, 8),
+    new Coin(1630, 260, 8),
+    new Coin(1780, 210, 8),
+    new Coin(1930, 260, 8),
+    new Coin(2080, 310, 8),
+    new Coin(2250, 280, 8), new Coin(2350, 280, 8),
+    new Coin(2550, 240, 8), new Coin(2650, 240, 8),
+    new Coin(2800, 200, 8), new Coin(2900, 200, 8),
+    new Coin(3300, 140, 8),
+    new Coin(3450, 110, 8),
+    new Coin(3600, 80, 8),
+    new Coin(3750, 50, 8),
+    new Coin(3900, 20, 8),
+    new Coin(4050, 50, 8),
+    new Coin(4200, 80, 8),
+    new Coin(4350, 110, 8),
+    new Coin(4500, 140, 8),
+    new Coin(4650, 180, 8), new Coin(4750, 180, 8),
+    new Coin(5050, 240, 8), new Coin(5150, 240, 8),
+    new Coin(5400, 300, 8), new Coin(5500, 300, 8),
+    new Coin(5700, 360, 8), new Coin(5800, 360, 8),
+    new Coin(6000, 400, 8), new Coin(6100, 400, 8)
+]);
+coins.push([
+    // Ocean floor coins
+    new Coin(100, 400, 8), new Coin(200, 400, 8), new Coin(300, 400, 8),
+    // Coral reef coins
+    new Coin(520, 380, 8), new Coin(580, 380, 8),
+    new Coin(670, 340, 8), new Coin(730, 340, 8),
+    new Coin(820, 300, 8), new Coin(880, 300, 8),
+    new Coin(970, 260, 8), new Coin(1030, 260, 8),
+    // Seaweed forest coins
+    new Coin(1250, 310, 8), new Coin(1350, 310, 8), new Coin(1450, 310, 8),
+    new Coin(1500, 280, 8), new Coin(1600, 280, 8),
+    // Shipwreck coins
+    new Coin(2050, 360, 8), new Coin(2150, 310, 8), new Coin(2250, 260, 8),
+    // Bubble column coins
+    new Coin(2550, 310, 8), new Coin(2750, 260, 8), new Coin(2950, 210, 8), new Coin(3150, 160, 8),
+    // Underwater cave coins
+    new Coin(3350, 310, 8), new Coin(3450, 310, 8),
+    new Coin(3600, 280, 8), new Coin(3700, 280, 8),
+    new Coin(3850, 250, 8), new Coin(3950, 250, 8),
+    new Coin(4100, 280, 8), new Coin(4200, 280, 8),
+    new Coin(4350, 310, 8), new Coin(4450, 310, 8),
+    // Final ascent coins
+    new Coin(4650, 360, 8), new Coin(4750, 360, 8),
+    new Coin(5050, 310, 8), new Coin(5250, 260, 8), new Coin(5450, 210, 8), new Coin(5650, 160, 8),
+    new Coin(5850, 110, 8), new Coin(5950, 110, 8)
+]);
+
+// Level 5 - City Coins
+coins.push([
+    // Street level coins
+    new Coin(100, 400, 8), new Coin(200, 400, 8), new Coin(300, 400, 8), new Coin(400, 400, 8),
+    // Building ledge coins
+    new Coin(620, 360, 8), new Coin(680, 360, 8),
+    new Coin(820, 310, 8), new Coin(880, 310, 8),
+    new Coin(1020, 260, 8), new Coin(1080, 260, 8),
+    new Coin(1220, 210, 8), new Coin(1280, 210, 8),
+    // Rooftop coins
+    new Coin(1480, 160, 8), new Coin(1580, 160, 8),
+    new Coin(1730, 140, 8), new Coin(1830, 140, 8),
+    new Coin(1980, 120, 8), new Coin(2080, 120, 8),
+    new Coin(2230, 100, 8), new Coin(2330, 100, 8),
+    // Construction site coins
+    new Coin(2480, 260, 8), new Coin(2530, 260, 8),
+    new Coin(2630, 210, 8), new Coin(2680, 210, 8),
+    new Coin(2780, 160, 8), new Coin(2830, 160, 8),
+    new Coin(2930, 110, 8), new Coin(2980, 110, 8),
+    // Billboard coins
+    new Coin(3180, 310, 8), new Coin(3280, 310, 8),
+    new Coin(3430, 280, 8), new Coin(3530, 280, 8),
+    new Coin(3680, 250, 8), new Coin(3780, 250, 8),
+    // Bridge coins
+    new Coin(3950, 360, 8), new Coin(4050, 360, 8), new Coin(4150, 360, 8),
+    new Coin(4280, 310, 8), new Coin(4380, 310, 8),
+    new Coin(4480, 260, 8), new Coin(4580, 260, 8),
+    // Skyscraper coins
+    new Coin(4730, 360, 8), new Coin(4830, 360, 8),
+    new Coin(4980, 310, 8), new Coin(5080, 310, 8),
+    new Coin(5230, 260, 8), new Coin(5330, 260, 8),
+    new Coin(5480, 210, 8), new Coin(5580, 210, 8),
+    new Coin(5730, 160, 8), new Coin(5830, 160, 8),
+    new Coin(5980, 110, 8), new Coin(6080, 110, 8)
+]);
+
+// Level 6 - Lab Coins
+coins.push([
+    // Lab entrance coins
+    new Coin(100, 400, 8), new Coin(200, 400, 8), new Coin(300, 400, 8),
+    // Laser grid coins
+    new Coin(520, 360, 8), new Coin(580, 360, 8),
+    new Coin(720, 310, 8), new Coin(780, 310, 8),
+    new Coin(920, 260, 8), new Coin(980, 260, 8),
+    // Conveyor belt coins
+    new Coin(1180, 360, 8), new Coin(1280, 360, 8),
+    new Coin(1430, 310, 8), new Coin(1530, 310, 8),
+    new Coin(1680, 260, 8), new Coin(1780, 260, 8),
+    // Test chamber coins
+    new Coin(1930, 210, 8), new Coin(2030, 210, 8),
+    new Coin(2130, 180, 8), new Coin(2230, 180, 8),
+    new Coin(2330, 150, 8), new Coin(2430, 150, 8),
+    new Coin(2530, 120, 8), new Coin(2630, 120, 8),
+    // Floating data disk coins
+    new Coin(2780, 310, 8), new Coin(2880, 310, 8),
+    new Coin(2980, 260, 8), new Coin(3080, 260, 8),
+    new Coin(3180, 210, 8), new Coin(3280, 210, 8),
+    new Coin(3380, 160, 8), new Coin(3480, 160, 8),
+    // Circuit board coins
+    new Coin(3650, 360, 8), new Coin(3750, 360, 8), new Coin(3850, 360, 8),
+    new Coin(3880, 310, 8), new Coin(3980, 310, 8),
+    new Coin(4030, 260, 8), new Coin(4130, 260, 8),
+    new Coin(4180, 210, 8), new Coin(4280, 210, 8),
+    new Coin(4330, 160, 8), new Coin(4430, 160, 8),
+    // Reactor core coins
+    new Coin(4580, 360, 8), new Coin(4680, 360, 8),
+    new Coin(4830, 310, 8), new Coin(4930, 310, 8),
+    new Coin(5080, 260, 8), new Coin(5180, 260, 8),
+    new Coin(5330, 210, 8), new Coin(5430, 210, 8),
+    new Coin(5580, 160, 8), new Coin(5680, 160, 8),
+    new Coin(5830, 110, 8), new Coin(5930, 110, 8)
+]);
+// Level 1 spikes - Forest (on platforms)
+const spikes = [[
+    new Spike(350, 380, 25, 25, "up"),
+    new Spike(750, 260, 25, 25, "up"),
+    new Spike(1150, 380, 25, 25, "up"),
+    new Spike(1800, 300, 25, 25, "up"),
+    new Spike(2300, 300, 25, 25, "up"),
+    new Spike(3250, 400, 25, 25, "up"),
+    new Spike(3850, 300, 25, 25, "up"),
+    new Spike(4450, 300, 25, 25, "up")
+]];
+
+// Level 2 spikes - Desert (on platforms)
+spikes.push([ 
+    new Spike(1150, 420, 25, 25, "up"),
+    new Spike(1550, 340, 25, 25, "up"),
+    new Spike(2100, 260, 25, 25, "up"),
+    new Spike(2600, 180, 25, 25, "up"),
+    new Spike(3100, 100, 25, 25, "up"),
+    new Spike(3650, 180, 25, 25, "up"),
+    new Spike(4150, 260, 25, 25, "up"),
+    new Spike(4650, 340, 25, 25, "up"),
+    new Spike(5150, 420, 25, 25, "up")
+]);
+
+// Level 3 spikes - Ice Cave (on platforms)
+spikes.push([ 
+    new Spike(900, 420, 25, 25, "up"),
+    new Spike(1450, 350, 25, 25, "up"),
+    new Spike(1900, 300, 25, 25, "up"),
+    new Spike(2500, 280, 25, 25, "up"),
+    new Spike(3000, 200, 25, 25, "up"),
+    new Spike(3400, 150, 25, 25, "up"),
+    new Spike(3850, 60, 25, 25, "up"),
+    new Spike(4300, 150, 25, 25, "up"),
+    new Spike(5000, 280, 25, 25, "up"),
+    new Spike(5650, 400, 25, 25, "up")
+]);
+spikes.push([
+    new Spike(550, 420, 25, 25, "up"),
+    new Spike(850, 340, 25, 25, "up"),
+    new Spike(1250, 350, 25, 25, "up"),
+    new Spike(1700, 290, 25, 25, "up"),
+    new Spike(2150, 350, 25, 25, "up"),
+    new Spike(2550, 350, 25, 25, "up"),
+    new Spike(3100, 200, 25, 25, "up"),
+    new Spike(3600, 350, 25, 25, "up"),
+    new Spike(4300, 350, 25, 25, "up"),
+    new Spike(5050, 350, 25, 25, "up")
+]);
+
+// Level 5 - City Spikes
+spikes.push([
+    new Spike(650, 400, 25, 25, "up"),
+    new Spike(850, 350, 25, 25, "up"),
+    new Spike(1050, 300, 25, 25, "up"),
+    new Spike(1250, 250, 25, 25, "up"),
+    new Spike(1500, 200, 25, 25, "up"),
+    new Spike(1750, 180, 25, 25, "up"),
+    new Spike(2000, 160, 25, 25, "up"),
+    new Spike(2250, 140, 25, 25, "up"),
+    new Spike(2500, 300, 25, 25, "up"),
+    new Spike(2900, 150, 25, 25, "up"),
+    new Spike(3200, 350, 25, 25, "up"),
+    new Spike(3700, 290, 25, 25, "up"),
+    new Spike(4300, 350, 25, 25, "up"),
+    new Spike(5000, 350, 25, 25, "up"),
+    new Spike(5700, 200, 25, 25, "up")
+]);
+
+// Level 6 - Lab Spikes
+spikes.push([
+    new Spike(550, 400, 25, 25, "up"),
+    new Spike(750, 350, 25, 25, "up"),
+    new Spike(950, 300, 25, 25, "up"),
+    new Spike(1200, 400, 25, 25, "up"),
+    new Spike(1450, 350, 25, 25, "up"),
+    new Spike(1700, 300, 25, 25, "up"),
+    new Spike(1950, 250, 25, 25, "up"),
+    new Spike(2150, 220, 25, 25, "up"),
+    new Spike(2350, 190, 25, 25, "up"),
+    new Spike(2550, 160, 25, 25, "up"),
+    new Spike(2800, 350, 25, 25, "up"),
+    new Spike(3200, 250, 25, 25, "up"),
+    new Spike(3600, 400, 25, 25, "up"),
+    new Spike(3900, 350, 25, 25, "up"),
+    new Spike(4200, 300, 25, 25, "up"),
+    new Spike(4500, 250, 25, 25, "up"),
+    new Spike(4850, 350, 25, 25, "up"),
+    new Spike(5250, 300, 25, 25, "up"),
+    new Spike(5650, 250, 25, 25, "up")
+]);
+// Initialize percentages
+updateCoinDisplay();
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") {
+        player.jump();
+    }
+    if (e.key==="ArrowLeft"){
+        player.isMovingLeft = true;
+    }
+    if (e.key==="ArrowRight"){
+        player.isMovingRight = true;
+    }
+});
+
+document.addEventListener("keyup", (e) => {
+    if (e.key==="ArrowLeft"){
+        player.isMovingLeft = false;
+    }
+    if (e.key==="ArrowRight"){
+        player.isMovingRight = false;
+    }
+});
+
+gameLoop();
+</script>
+    </body>
+</html>
