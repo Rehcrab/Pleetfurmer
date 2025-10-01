@@ -678,7 +678,7 @@ const level4Platforms = [
     // Shipwreck area
     new Platform(2000, 400, 300, 50),
     new Platform(2100, 350, 80, 50),
-    new Platform(2200, 300, 60, 50),
+    new Platform(2200, 300, 150, 50),
     
     // Bubble columns
     new Platform(2500, 350, 100, 20),
@@ -798,7 +798,7 @@ const goals = [
     new Goal(6300, 400, 15, 15)  // Level 3 goal
 ];
 goals.push(new Goal(6000, 100, 15, 15)); // Level 4 - Ocean
-goals.push(new Goal(6100, 100, 15, 15)); // Level 5 - City  
+goals.push(new Goal(6000, 100, 15, 15)); // Level 5 - City  
 goals.push(new Goal(6200, 100, 15, 15)); // Level 6 - Lab
 // Level 1 coins - Forest
 // Level 1 coins - Forest (FIXED - away from spikes)
@@ -850,7 +850,6 @@ coins.push([
     new Coin(3420, 120, 8), new Coin(3480, 120, 8),  // Platform at y=220
     new Coin(3680, 160, 8), new Coin(3720, 160, 8),  // Platform at y=260
     new Coin(3900, 200, 8), new Coin(4000, 200, 8),  // Platform at y=300
-    new Coin(4100, 200, 8),  // Platform at y=300
     new Coin(4430, 280, 8), new Coin(4470, 280, 8),  // Platform at y=380
     new Coin(4700, 320, 8), new Coin(4750, 320, 8),  // Platform at y=420
     new Coin(4900, 360, 8), new Coin(5000, 360, 8),  // Platform at y=460
@@ -904,7 +903,7 @@ coins.push([
     // Underwater cave coins
     new Coin(3350, 310, 8), new Coin(3450, 310, 8),
     new Coin(3600, 280, 8), new Coin(3700, 280, 8),
-    new Coin(3850, 250, 8), new Coin(3950, 250, 8),
+    new Coin(3850, 250, 8),
     new Coin(4100, 280, 8), new Coin(4200, 280, 8),
     new Coin(4350, 310, 8), new Coin(4450, 310, 8),
     // Final ascent coins
@@ -938,13 +937,13 @@ coins.push([
     new Coin(3680, 250, 8), new Coin(3780, 250, 8),
     // Bridge coins
     new Coin(3950, 360, 8), new Coin(4050, 360, 8), new Coin(4150, 360, 8),
-    new Coin(4280, 310, 8), new Coin(4380, 310, 8),
-    new Coin(4480, 260, 8), new Coin(4580, 260, 8),
+    new Coin(4280, 310, 8), 
+    new Coin(4480, 260, 8), 
     // Skyscraper coins
     new Coin(4730, 360, 8), new Coin(4830, 360, 8),
     new Coin(4980, 310, 8), new Coin(5080, 310, 8),
     new Coin(5230, 260, 8), new Coin(5330, 260, 8),
-    new Coin(5480, 210, 8), new Coin(5580, 210, 8),
+    new Coin(5480, 210, 8),
     new Coin(5730, 160, 8), new Coin(5830, 160, 8),
     new Coin(5980, 110, 8), new Coin(6080, 110, 8)
 ]);
@@ -1031,7 +1030,7 @@ spikes.push([
     new Spike(2150, 350, 25, 25, "up"),
     new Spike(2550, 350, 25, 25, "up"),
     new Spike(3100, 200, 25, 25, "up"),
-    new Spike(3600, 350, 25, 25, "up"),
+    new Spike(3600, 280, 25, 25, "up"),
     new Spike(4300, 350, 25, 25, "up"),
     new Spike(5050, 350, 25, 25, "up")
 ]);
@@ -1052,7 +1051,6 @@ spikes.push([
     new Spike(3700, 290, 25, 25, "up"),
     new Spike(4300, 350, 25, 25, "up"),
     new Spike(5000, 350, 25, 25, "up"),
-    new Spike(5700, 200, 25, 25, "up")
 ]);
 
 // Level 6 - Lab Spikes
@@ -1104,4 +1102,5 @@ document.addEventListener("keyup", (e) => {
 gameLoop();
 </script>
     </body>
+
 </html>
